@@ -9,7 +9,7 @@ FluidSim::FluidSim(
     const MatrixXd& phi_init,
     const MatrixXd& phi_solid_init) {
         Assert(n1_init+1 == phi_init.rows() && n2_init+1 == phi_init.cols(), "FluidSim::FluidSim", "The shape of phi_init is not correct.");
-        Assert(n1_init+1 == phi_init.rows() && n2_init+1 == phi_init.cols(), "FluidSim::FluidSim", "The shape of phi_init is not correct.");
+        Assert(n1_init+1 == phi_solid_init.rows() && n2_init+1 == phi_solid_init.cols(), "FluidSim::FluidSim", "The shape of phi_solid_init is not correct.");
         n1 = n1_init;
         n2 = n2_init;        
         l = l_init;  
@@ -23,7 +23,7 @@ FluidSim::FluidSim(
         n_liquid = 0;
         for (int i = 0; i < n1; i++) for (int j = 0; j < n2; j++) {
             phi(i, j) = interpolate_value(i+0.5, j+0.5, phi_init);
-            if (phi(i, j) <= 0) {
+            if (phi(i, j) < 0) {
                 n_liquid++;
             }
         }        
@@ -311,7 +311,7 @@ void FluidSim::computePhi(){
     
     // extend phi into solid
     for (int i = 0; i < n1; i++) for (int j = 0; j < n2; j++) {
-		if (phi(i, j) < 0.5 * l && getPhiSolid(Vector2d(+0.5, j+0.5) * l) < 0) {
+		if (phi(i, j) < 0.5 * l && getPhiSolid(Vector2d(i+0.5, j+0.5) * l) < 0) {
 			phi(i, j) = -0.5 * l;
 		}
 	}
