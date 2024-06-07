@@ -15,7 +15,8 @@ FluidSim::FluidSim(
         l = l_init;  
         u.resize(n1+1, n2); u_new.resize(n1+1, n2); valid_u.resize(n1+1, n2); valid_u_old.resize(n1+1, n2); weights_u.resize(n1+1, n2); u_solid.resize(n1+1, n2);
         v.resize(n1, n2+1); v_new.resize(n1, n2+1); valid_v.resize(n1, n2+1); valid_v_old.resize(n1, n2+1); weights_v.resize(n1, n2+1); v_solid.resize(n1, n2+1);
-        u_solid.setZero(); v_solid.setZero();
+        u.setZero(); u_new.setZero(); valid_u.setZero(); valid_u_old.setZero(); weights_u.setZero(); u_solid.setZero();
+        v.setZero(); v_new.setZero(); valid_v.setZero(); valid_v_old.setZero(); weights_v.setZero(); v_solid.setZero();        
         Adiag.resize(n1, n2); Aplusi.resize(n1, n2); Aplusj.resize(n1, n2);
         d.resize(n1, n2); p.resize(n1, n2); z.resize(n1, n2); s.resize(n1, n2);        
         phi_solid = phi_solid_init;
@@ -27,25 +28,31 @@ FluidSim::FluidSim(
                 n_liquid++;
             }
         }        
-
-    // make the particles large enough so they always appear on the grid
-    particle_radius = (l * 1.01 * sqrt(2.0) / 2.0);
+        
     // init particles
+    int resolution = 1;
+    double r_min = 0.05 * l, r_max = 0.5 * l;    
     int seed = 0;
-	for (int n = 0; n < 2; n++) {
-		for (int i = 1; i < n1-1; i++) for (int j = 1; j < n2-1; j++) {
-			double a = randhashd(seed++, -1, 1); double b = randhashd(seed++, -1, 1);
-			double x_ = static_cast<double>(i) + a, y_ = static_cast<double>(j) + b;
-			if (interpolate_value(x_, y_, phi_init) <= -particle_radius) {		
-                Assert(x_ > 0 && y_ > 0, "FluidSim::FluidSim", "x_ and y_ should be positive.");		
-				if (getPhiSolid(Vector2d(x_ * l, y_ * l)) > 0) {
-                    particles.push_back(Vector2d(x_ * l, y_ * l));
+    Vector2d pos;
+    double phi_val;
+	for (int n = 0; n < 32; n++) {
+		for (int i = resolution; i < resolution * (n1-1); i++)
+        for (int j = resolution; j < resolution * (n2-1); j++) {
+			double a = randhashd(seed++, -0.5 / resolution, 0.5 / resolution);
+            double b = randhashd(seed++, -0.5 / resolution, 0.5 / resolution);
+            pos = Vector2d((i + 0.5) / resolution + a, (j + 0.5) / resolution + b);	
+            phi_val = interpolate_value(pos, phi_init);
+			if (abs(phi_val) <= 0.7 * l) {		
+                Assert(pos(0) > 0 && pos(1) > 0, "FluidSim::FluidSim", "x_ and y_ should be positive.");		
+				if (getPhiSolid(pos * l) > 0) {                    
+                    particles.push_back(pos * l);
+                    sign_p.push_back(sign(phi_val));
+                    r_p.push_back(clamp(abs(phi_val), r_min, r_max));
                 }					
 			}
 		}
-	}
-    computePhi();    
-
+	}    
+    
     std::cout << "FluidSim is initialized." << std::endl;
 }
 
@@ -77,7 +84,9 @@ void FluidSim::advance(const double& time_step){
             updateRigidBodyGrids();
             recomputeRigidBodyMass();
         }
+        //reSeedParticles();
         advectParticles(dt);
+        advectPhi(dt);
         computePhi();
         computeWeights();
         advect(dt);
@@ -272,6 +281,48 @@ void FluidSim::extrapolate(MatrixXd& field, MatrixXd field_new, MatrixXi& valid,
     return;
 }
 
+void FluidSim::reSeedParticles() { 
+    if (count != 20) {
+        count++;
+        return;
+    }  
+    count = 0;
+    int resolution = 1;
+    double r_min = 0.05 * l, r_max = 0.5 * l;    
+    int seed = 0;
+    Vector2d pos;
+    double phi_val;
+    particles.clear(); sign_p.clear(); r_p.clear();
+	for (int n = 0; n < 32; n++) {
+		for (int i = resolution; i < resolution * (n1-1); i++)
+        for (int j = resolution; j < resolution * (n2-1); j++) {
+			double a = randhashd(seed++, -0.5 / resolution, 0.5 / resolution);
+            double b = randhashd(seed++, -0.5 / resolution, 0.5 / resolution);
+            pos = Vector2d((i + 0.5) / resolution + a, (j + 0.5) / resolution + b);	
+            phi_val = getPhi(pos - Vector2d(0.5, 0.5) * l);
+			if (abs(phi_val) <= 2 * l) {		
+                Assert(pos(0) > 0 && pos(1) > 0, "FluidSim::FluidSim", "x_ and y_ should be positive.");		
+				if (getPhiSolid(pos * l) > 0) {                    
+                    particles.push_back(pos * l);
+                    sign_p.push_back(sign(phi_val));
+                    r_p.push_back(clamp(abs(phi_val), r_min, r_max));
+                }					
+			}
+		}
+	}    
+}
+
+void FluidSim::advectPhi(const double& dt) {
+    Vector2d pos, grad;
+    MatrixXd phi_new = phi;
+    for (int i = 0; i < n1; i++) for (int j = 0; j < n2; j++) {
+        pos = Vector2d(i + 0.5, j + 0.5) * l;
+        phi_new(i, j) = getPhi(traceRk2(pos, -dt));
+    }    
+    phi = phi_new;
+    return;
+}
+
 void FluidSim::advectParticles(const double& dt){
     for (int i=0; i<particles.size(); i++) {
         particles[i] = traceRk2(particles[i], dt);
@@ -296,17 +347,43 @@ void FluidSim::advectParticles(const double& dt){
 }
 
 void FluidSim::computePhi(){
-    phi.setConstant(3*l);
-    for(int p=0; p<particles.size(); p++){
-        Vector2i cell_ind = (particles[p] / l - Vector2d(0.5, 0.5)).cast<int>();        
-        for (int j = max(0, cell_ind[1] - 1); j <= min(cell_ind[1] + 1, n2 - 1); j++) 
-        for (int i = max(0, cell_ind[0] - 1); i <= min(cell_ind[0] + 1, n1 - 1); i++) {
-            Vector2d sample_pos((i + 0.5) * l, (j + 0.5) * l);                    
-            double test_val = (sample_pos - particles[p]).norm() - particle_radius;
-            if (test_val < phi(i, j)) {
-                phi(i, j) = test_val;
+    MatrixXd phi_new = phi;
+    double phi_val, phi_p;
+    Vector2d pos;
+    int i, j;
+    for (int p = 0; p < particles.size(); p++) {
+        phi_val = getPhi(particles[p]);
+        if (sign(phi_val) * sign_p[p] < 0 && abs(phi_val) > r_p[p]) {
+            i = static_cast<int>(particles[p](0) - 0.5);
+            i = clamp(i, 0, n1 - 2);
+            j = static_cast<int>(particles[p](1) - 0.5);
+            j = clamp(j, 0, n2 - 2);
+            // (i, j)
+            pos = Vector2d((i+0.5) * l, (j+0.5) * l);
+            phi_p = sign_p[p] * (r_p[p] - (pos - particles[p]).norm());
+            if (abs(phi_p) < abs(phi_new(i, j))) {
+                phi_new(i, j) = phi_p;
             }
-        }            		
+            // (i+1, j)
+            pos = Vector2d((i+1+0.5) * l, (j+0.5) * l);
+            phi_p = sign_p[p] * (r_p[p] - (pos - particles[p]).norm());
+            if (abs(phi_p) < abs(phi_new(i+1, j))) {
+                phi_new(i+1, j) = phi_p;
+            }
+            // (i, j+1)
+            pos = Vector2d((i+0.5) * l, (j+1+0.5) * l);
+            phi_p = sign_p[p] * (r_p[p] - (pos - particles[p]).norm());
+            if (abs(phi_p) < abs(phi_new(i, j+1))) {
+                phi_new(i, j+1) = phi_p;
+            }
+            // (i+1, j+1)
+            pos = Vector2d((i+1+0.5) * l, (j+1+0.5) * l);
+            phi_p = sign_p[p] * (r_p[p] - (pos - particles[p]).norm());
+            if (abs(phi_p) < abs(phi_new(i+1, j+1))) {
+                phi_new(i+1, j+1) = phi_p;
+            }
+        }
+        phi = phi_new;
     }
     
     // extend phi into solid
@@ -374,7 +451,7 @@ void FluidSim::project(){
     if (add_rigidbody) {
         J_x.setZero(); J_y.setZero(); J_rot.setZero();        
         for(int i = 0; i < n1; i++) for(int j = 0; j < n2; j++) {
-            if (phi(i, j) < 0) {
+            if (phi(i, j) < 0 && getPhiRigidBody(Vector2d((i+0.5) * l, (j+0.5) * l)) >= 0) {
                 J_x(i, j) = weights_rigid_u(i+1, j) - weights_rigid_u(i, j);
                 J_y(i, j) = weights_rigid_v(i, j+1) - weights_rigid_v(i, j);
                 Vector2d pos((i+0.5) * l, (j+0.5) * l);
@@ -460,7 +537,7 @@ void FluidSim::project(){
 	}
     // TODO: remove the 1D null space
     // solve A * p = d
-    solve(1000);
+    solve(2000);
 
     // update u
     for (int i = 1; i < n1; i++) for (int j = 0; j < n2; j++) {
@@ -487,7 +564,7 @@ void FluidSim::project(){
         Vector2d velocity_temp = rigidbody.getVelocity();
         double omega_temp = rigidbody.getOmega();
         for (int i = 0; i < n1; i++) for (int j = 0; j < n2; j++) {
-            if (phi(i, j) < 0) {
+            if (phi(i, j) < 0 && getPhiRigidBody(Vector2d((i+0.5) * l, (j+0.5) * l)) >= 0) {
                 velocity_temp(0) += fluid_density * J_x(i, j) * p(i, j) / rigidbody.getMass()(0, 0);
                 velocity_temp(1) += fluid_density * J_y(i, j) * p(i, j) / rigidbody.getMass()(1, 1);
                 omega_temp += fluid_density * J_rot(i, j) * p(i, j) / rigidbody.getI();
@@ -626,7 +703,7 @@ void FluidSim::addRigdBody(
         updateRigidBodyGrids();
         // compute rigidbody_density
         rigidbody_density = (rigidbody.getMass()(0, 0) + rigidbody.getMass()(1, 1)) / (weights_rigid_u.array().abs().sum() + weights_rigid_v.array().abs().sum());
-        fluid_density = rigidbody_density * 0.7;
+        fluid_density = rigidbody_density * 2.;
 
         return;
 }
@@ -683,8 +760,8 @@ void FluidSim::recomputeSolidVelocity() {
     v_solid.setZero();
     for(int i=0; i < n1; i++) for(int j = 0; j < n2+1; j++) {
         Vector2d pos((i+0.5) * l, j * l);
-        pos(0) = clamp(pos(0), 0., (n1-1e-6) * l);
-        pos(1) = clamp(pos(1), 0., (n2-1-1e-6) * l); 
+        pos(0) = clamp(pos(0), 0., (n1-1-1e-6) * l);
+        pos(1) = clamp(pos(1), 0., (n2-1e-6) * l); 
         if (getPhiSolid(pos) < 0) {
             v_solid(i, j) = 0.;            
         }
@@ -715,7 +792,7 @@ void FluidSim::outputVideo(double time_step, int n, int time, int fps, std::stri
         
         for (int i = 0; i < resolution * n1; i++) for (int j = 0; j < resolution * n2; j++) {
             pos = Vector2d(i+0.5, j+0.5) / resolution * l;
-            if (getPhiRigidBody(pos) <= 0) {
+            if (add_rigidbody && getPhiRigidBody(pos) <= 0) {
                 image.at<cv::Vec3b>(resolution * n2 - j, i) = cv::Vec3b(200, 200, 200);// BGR
             }
             else if (getPhi(pos) <= 0 && getPhiSolid(pos) > 0) {

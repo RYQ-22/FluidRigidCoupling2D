@@ -11,6 +11,7 @@ private:
     double l;
     int n1, n2;
     int n_liquid = 0;
+    int count = 0;
     // velocity at the cell's center
     MatrixXd u, v;
     MatrixXd u_new, v_new;
@@ -29,8 +30,10 @@ private:
     MatrixXd  z, s; // z: auxiliary vetor, s: search vector
 
     // particles
-    double particle_radius;
+    //double particle_radius;
     std::vector<Vector2d> particles;
+    std::vector<double> r_p;
+    std::vector<int> sign_p;
 
     // rigid body
     bool add_rigidbody = false;
@@ -50,6 +53,7 @@ private:
     void applyForce(const double& dt);
     // 2. advect
     void advect(const double& dt);
+    void advectPhi(const double& dt);
     void advectParticles(const double& dt);
     Vector2d traceRk2(const Vector2d& position, const double& dt);
     void semiLagrangian(const MatrixXd& field, MatrixXd& field_new, const double& dt, const int& id);
@@ -60,6 +64,7 @@ private:
     void applyA(const MatrixXd& x, MatrixXd& ans);
     MatrixXd applyA(const MatrixXd& x);
     // some details
+    void reSeedParticles();
     void computePhi();
     void extrapolate();
     void extrapolate(MatrixXd& field, MatrixXd field_new, MatrixXi& valid, MatrixXi& valid_old);
