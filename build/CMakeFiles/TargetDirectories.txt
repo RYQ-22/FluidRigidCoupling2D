@@ -1,3 +1,0 @@
-/home/ricky/Documents/MyProject/FluidRigidCoupling2D/build/CMakeFiles/FluidSim.dir
-/home/ricky/Documents/MyProject/FluidRigidCoupling2D/build/CMakeFiles/edit_cache.dir
-/home/ricky/Documents/MyProject/FluidRigidCoupling2D/build/CMakeFiles/rebuild_cache.dir
