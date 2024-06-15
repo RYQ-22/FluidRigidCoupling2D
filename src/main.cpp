@@ -42,7 +42,7 @@ int main(){
     
 
     //sim.run(0.002, 1);
-    sim.outputVideo(0.005, 5, 5, 30, "test_new_8");
+    sim.outputVideo(0.005, 5, 5, 30, "test_new_9");
 
     return 0;
 }
