@@ -52,10 +52,6 @@ using Vector2i = Eigen::Vector2i;
 
 using FuncPtr = double (*)(const Vector2d&);
 
-// Path
-const std::string projectPath = std::string("/home/ricky/Documents/MyProject/FluidRigidCoupling2D");
-const std::string pythonPath = std::string("/home/ricky/anaconda3/envs/myenv/bin/python");
-
 }
 
 #endif
